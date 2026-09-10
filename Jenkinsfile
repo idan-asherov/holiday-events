@@ -34,3 +34,4 @@ pipeline {
         }
     }
 }
+// Pipeline configured for local Docker Desktop deployment
