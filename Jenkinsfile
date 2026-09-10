@@ -2,7 +2,6 @@ pipeline {
     agent any
     environment {
         IMAGE_NAME = "holiday-events"
-        APP_PORT = "8000"
     }
     stages {
         stage('Checkout') {
@@ -24,13 +23,13 @@ pipeline {
             steps {
                 sh "docker stop holiday-app || true"
                 sh "docker rm holiday-app || true"
-                sh "docker run -d --name holiday-app -p 8000:8000 ${IMAGE_NAME}:latest"
+                sh "docker run -d --name holiday-app -p 8000:3000 ${IMAGE_NAME}:latest"
             }
         }
         stage('Health Check') {
             steps {
                 sleep 3
-                sh "curl -f http://localhost:8000/health || curl -f http://host.docker.internal:8000/health || true"
+                sh "curl -f http://host.docker.internal:8000/health || curl -f http://host.docker.internal:8000/api/events || curl -f http://host.docker.internal:8000/ || true"
             }
         }
     }
