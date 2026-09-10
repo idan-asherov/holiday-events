@@ -1,9 +1,8 @@
 pipeline {
     agent any
     environment {
-        DOCKER_USER = "idanasherov"
-        IMAGE_NAME = "${DOCKER_USER}/holiday-events"
-        CREDS_ID = "docker-hub-credentials"
+        IMAGE_NAME = "holiday-events"
+        APP_PORT = "8000"
     }
     stages {
         stage('Checkout') {
@@ -21,13 +20,17 @@ pipeline {
                 sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} -t ${IMAGE_NAME}:latest ."
             }
         }
-        stage('Push Image') {
+        stage('Deploy to Docker Desktop') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${CREDS_ID}", passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER_ID')]) {
-                    sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER_ID} --password-stdin"
-                    sh "docker push ${IMAGE_NAME}:${BUILD_NUMBER}"
-                    sh "docker push ${IMAGE_NAME}:latest"
-                }
+                sh "docker stop holiday-app || true"
+                sh "docker rm holiday-app || true"
+                sh "docker run -d --name holiday-app -p 8000:8000 ${IMAGE_NAME}:latest"
+            }
+        }
+        stage('Health Check') {
+            steps {
+                sleep 3
+                sh "curl -f http://localhost:8000/health || curl -f http://host.docker.internal:8000/health || true"
             }
         }
     }
