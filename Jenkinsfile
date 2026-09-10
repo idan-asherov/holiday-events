@@ -29,7 +29,7 @@ pipeline {
         stage('Health Check') {
             steps {
                 sleep 3
-                sh "curl -f http://host.docker.internal:8000/health || curl -f http://host.docker.internal:8000/api/events || curl -f http://host.docker.internal:8000/ || true"
+                sh "curl -f http://host.docker.internal:8000/health"
             }
         }
     }
