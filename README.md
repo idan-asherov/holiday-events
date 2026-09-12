@@ -1,56 +1,88 @@
-# Holiday Events
+# 🚀 Jenkins CI/CD Pipeline & Ansible Infrastructure
 
-Holiday Events is a small internal company portal. Employees can browse upcoming holiday gatherings and register for an event.
+**מערכת אירועי חברה (Holiday Events) - קו ייצור אוטומטי ותשתית כקוד (IaC)**
 
-## Requirements
+פרויקט זה מציג ארכיטקטורת CI/CD מודרנית המנהלת קו ייצור עבור אפליקציית Web (Node.js/Express). המערכת תוכננה בסטנדרטים של סביבת פיתוח וייצור מקומית (Local Production), עם דגש על אוטומציה מלאה ב-Jenkins, ניהול תצורה (Configuration Management) אידמפוטנטי בעזרת Ansible, ואסטרטגיית ניהול ענפים ב-Git.
 
-- Node.js 18 or later
-- npm
+---
 
-## Install
+## 📐 ארכיטקטורת המערכת (System Architecture)
 
-```bash
-npm install
+המערכת פועלת במודל של הפרדת אחריות מלאה בין ה-Pipeline לבין מנוע הפריסה:
+
+1. **אפליקציית הליבה (`holiday-events`):** שרת Backend המאזין פנימית על פורט 3000, מגיש ממשק משתמש סטטי, חושף API של אירועי חברה, ומספק נתיב לבקרת בריאות (`/health`).
+2. **שרת האוטומציה (`Jenkins`):** מנהל את מחזור החיים של הקוד - משיכה מ-GitHub, התקנת תלויות, בניית אימג' ב-Docker, והפעלת כלי הפריסה.
+3. **ניהול התצורה (`Ansible`):** מנוע אוטומציה עצמאי (`ansible/deploy.yml`) המנהל את מחזור החיים של הקונטיינר בצורה אידמפוטנטית מול מנוע ה-Docker Desktop המקומי.
+
+```text
+  [תחנת הפיתוח - ענפי Git]
+                   │
+           git push (main / feature)
+                   ▼
+       [מאגר מרוחק - GitHub SCM]
+                   │
+           משיכת קוד אוטומטית (SCM Poll / Build Now)
+                   ▼
+        [שרת האוטומציה - Jenkins Engine]
+      ┌────────────────────────────────────────┐
+      │ 1. Checkout (משיכת קוד המקור)           │
+      │ 2. Dependencies (התקנת חבילות npm)      │
+      │ 3. Build & Tag (בניית אימג' דוקר)      │
+      │ 4. Local Deployment (פריסה מקומית)     │
+      │ 5. Strict Health Check (בדיקת שפיות)   │
+      └────────────────────────────────────────┘
+                   │
+         ניהול דרך Docker Socket
+                   ▼
+     [מנוע הקונטיינרים - Docker Desktop]  ◄── [Ansible Configuration Engine]
+                   │                               ├── inventory.ini
+                   ▼                               └── deploy.yml
+       [קונטיינר האפליקציה: holiday-app]
+         ├── פורט פנימי של השרת: 3000
+         └── מיפוי לפורט חיצוני במחשב: 8000
+
+---
+
+## 🔄 זרימת קו הייצור (Pipeline Flows)
+
+ה-`Jenkinsfile` מנהל את הפריסה דרך השלבים הבאים:
+
+### 1. ניהול לפי ענפים (Branching Strategy)
+
+הפרויקט מנוהל באמצעות מתודולוגיית Feature Branching. עבודה שוטפת התבצעה על ענף ייעודי (`feature/harden-pipeline`). לאחר סיום הפיתוח, הקוד מוזג בחזרה לענף ה-`main` המרכזי תוך שימוש בדגל `--no-ff` (No Fast-Forward), מה שהבטיח שמירת טופולוגיה ברורה של התפצלות ומיזוג בהיסטוריית ה-Git.
+
+### 2. אריזה ובניית הקונטיינר (Build & Tag)
+
+לאחר משיכת הקוד והתקנת התלויות בסביבת ה-CI, מתבצעת אריזת הקונטיינר:
+
+- Jenkins מתקשר ישירות עם מנוע ה-Docker המקומי.
+- ה-Image נבנה ומקבל תיוג כפול (Double Tagging): גם גרסת `latest` קבועה, וגם תיוג דינמי של מספר הבנייה של ג'נקינס (`${BUILD_NUMBER}`) לשמירה על עקיבות.
+
+### 3. פריסה מנוהלת (Ansible Deployment)
+
+במקום שג'נקינס יריץ פקודות Docker ישירות, הוא מעביר את השרביט ל-Ansible:
+
+- הפלייבוק מוחק את הקונטיינר הישן באופן בטוח.
+- מקים את הקונטיינר החדש תוך הקפדה על מיפוי פורטים מדויק מפורט 8000 החיצוני לפורט 3000 הפנימי של השרת.
+
+### 4. בקרת איכות ובדיקות אינטגרציה (Health Check Gate)
+
+בסיום הפריסה, מתבצע אימות חי:
+ה-Pipeline (כמו גם Ansible) שולח בקשת רשת לנתיב ה-`/health`. הבדיקה מוגדרת תחת סביבה מבודדת (מתוך ג'נקינס החוצה אל ה-Host) ודורשת קבלת תשובת JSON וסטטוס 200. כל סטטוס אחר מכשיל את ה-Pipeline.
+
+---
+
+## 💣 אתגרים הנדסיים ופתרונות בדרך
+
+המערכת נבנתה תוך פתרון מספר צווארי בקבוק ותקלות תשתית אמיתיות:
+
+1. **תעלומת מיפוי הפורטים (`Empty reply from server`):** בשלב הפריסה הראשוני, הקונטיינר עלה אך החזיר שגיאה ריקה. ניתוח הלוגים הפנימיים (`docker logs`) חשף שרת ה-Express מאזין על פורט 3000, בעוד שמיפוי הדוקר כוון ל-`8000:8000`. תיקון הניתוב ל-`8000:3000` פתר את נתק הרשת.
+2. **בידוד רשתות מתוך ג'נקינס:** ג'נקינס רץ כקונטיינר מבודד. כאשר ניסה לבדוק את זמינות האפליקציה בכתובת `localhost`, הוא למעשה חיפש בתוך עצמו וקיבל סירוב חיבור. הפתרון ההנדסי היה שימוש ב-`host.docker.internal:8000`, אשר איפשר לג'נקינס לחצות את גבולות הקונטיינר, לצאת למחשב המארח, ולהיכנס לקונטיינר של האפליקציה בביטחה.
+
+---
+
+## 📝 פסקה אישית
+
+**השלב המאתגר ביותר בפרויקט:**
+החלק שדרש את ההעמקה הגדולה ביותר היה הבנת טופולוגיית הרשתות בין הקונטיינרים השונים במערכת. המעבר מכתיבת קוד שעובד "על המחשב שלי" להרצת Pipeline שבו קונטיינר אחד (Jenkins) צריך לנהל ולהרים קונטיינר אחר, ואז גם לתקשר איתו לצורך בדיקות (Health Check), דרש שינוי תפיסתי. הלמידה כיצד לנהל את ה-Docker Socket כדי לבנות קונטיינרים, ואיך להשתמש בניתוב נכון (`host.docker.internal`), חידדה משמעותית את הבנתי בארכיטקטורת Microservices ובבידוד תהליכים.
 ```
-
-## Start
-
-```bash
-npm start
-```
-
-The same command is available as `npm run dev`.
-
-The server uses the `PORT` environment variable and defaults to `3000` when it is not set.
-
-```bash
-PORT=3000 npm start
-```
-
-## Access the application
-
-Open a browser and go to:
-
-[http://localhost:3000](http://localhost:3000)
-
-## API endpoints
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/health` | Health check. Returns `{ "status": "healthy", "service": "holiday-events" }`. |
-| `GET` | `/api/events` | Returns the list of events. |
-| `GET` | `/api/events/:id` | Returns a single event. |
-| `POST` | `/api/register` | Registers a person for an event. |
-
-### Registration body
-
-```json
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "eventId": 1
-}
-```
-
-A successful registration decreases the number of remaining spots for that event. Event availability is kept in memory while the server is running.
-# Holiday Events CI/CD Pipeline
