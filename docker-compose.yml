@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  holiday-app:
+    image: holiday-events:latest
+    container_name: holiday-app
+    ports:
+      - "8000:3000"
+    restart: unless-stopped
